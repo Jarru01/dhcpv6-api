@@ -16,19 +16,25 @@ This repository contains a FastAPI-based web application and API designed to man
 
 ## 📁 Repository Structure
 
-Based on the project architecture, here is an overview of the core files:
-
-| File / Folder | Description |
-| :--- | :--- |
-| **`main.py`** | The entry point of the application; initializes the FastAPI app and routes. |
-| **`kea.py`** | Contains the core logic for interacting with, parsing, and modifying Kea configurations. |
-| **`models.py`** | Defines Pydantic data models for structured request validation (subnets, pools, options). |
-| **`kea-dhcp6.conf`** | The base or active configuration file for the Kea DHCPv6 server. |
-| **`radvd.conf`** | The configuration file for the Router Advertisement Daemon. |
-| **`99-ipv6.conf`** | System sysctl configuration file to optimize/enable IPv6 forwarding and behavior. |
-| **`dhcpv6-api.service`** | Systemd unit file to manage the FastAPI application as a system service. |
-| **`51-ipv6-SERVER`** / **`CLIENT`** | Network configuration or automation scripts for the server/client environments. |
-| **`avs-template`** | Environment or virtualization template file used during setup. |
+```text
+dhcpv6-api/
+├── src/
+│   ├── main.py                       # FastAPI entry point: app and routes
+│   ├── kea.py                        # Kea config parsing, editing, reload
+│   └── models.py                     # Pydantic request models
+├── config/
+│   ├── kea-dhcp6.conf                # Kea DHCPv6 server configuration
+│   ├── radvd.conf                    # Router Advertisement Daemon configuration
+│   ├── 99-ipv6.conf                  # sysctl IPv6 forwarding settings
+│   └── netplan/
+│       ├── 51-ipv6-SERVER.yaml       # static IPv6 address for the server (ens4)
+│       └── 51-ipv6-CLIENT.yaml       # matching client-side netplan config
+├── deploy/
+│   ├── dhcpv6-api.service            # systemd unit for the API
+│   └── avs-template.yaml             # HEAT template provisioning the lab machines
+├── requirements.txt                  # Python dependencies
+└── README.md
+```
 
 ---
 
@@ -41,4 +47,21 @@ Ensure your system has the following packages installed:
 
 Install the Python dependencies:
 ```bash
-pip install fastapi uvicorn pydantic
+pip install -r requirements.txt
+```
+
+---
+
+## 🚀 Deployment
+
+The API runs on the DHCPv6 server itself and expects the layout below. The
+application code uses absolute paths, so keep the target locations fixed:
+
+| Repo path | Target on the server |
+| :--- | :--- |
+| `src/*` | `/opt/dhcpv6-api/` (systemd `WorkingDirectory`; run with `uvicorn main:app --host 0.0.0.0 --port 8000`) |
+| `config/kea-dhcp6.conf` | `/etc/kea/kea-dhcp6.conf` |
+| `config/radvd.conf` | `/etc/radvd.conf` |
+| `config/99-ipv6.conf` | `/etc/sysctl.d/99-ipv6.conf` |
+| `config/netplan/*.yaml` | `/etc/netplan/` |
+| `deploy/dhcpv6-api.service` | `/etc/systemd/system/dhcpv6-api.service` |
