@@ -11,25 +11,6 @@ addresses with **Kea** (stateful DHCPv6, no SLAAC).
 
 ## How it fits together
 
-```mermaid
-flowchart LR
-    subgraph server["Debian router / DHCPv6 server"]
-        api["dhcpv6-api<br/>(FastAPI)"]
-        kea["kea-dhcp6"]
-        radvd["radvd"]
-        conf[("/etc/kea/kea-dhcp6.conf")]
-        leases[("kea-leases6.csv")]
-        api -- "config-test / config-reload / status-get<br/>(UNIX control socket)" --> kea
-        api -- "atomic write" --> conf
-        api -- "read" --> leases
-        kea --- conf
-        kea --- leases
-    end
-    admin(["Admin<br/>(curl / Swagger UI)"]) -- "HTTP + X-API-Key" --> api
-    radvd -- "RA: prefix fd00::/64,<br/>M=1 O=1, no SLAAC" --> client(["Client VM"])
-    client -- "DHCPv6 Solicit/Request" --> kea
-```
-
 1. **radvd** advertises `fd00::/64` with the *Managed* and *Other* flags set and autonomous
    addressing off, so clients must ask DHCPv6 for both their address and their DNS settings.
 2. **Kea** hands out addresses from the configured pools and keeps leases in a CSV file.
@@ -130,8 +111,9 @@ Install the API:
 ```bash
 sudo apt install kea-dhcp6-server radvd python3-venv
 sudo install -d -o avs -g avs /opt/dhcpv6-api
-git clone https://github.com/Jarru01/dhcpv6-api /opt/dhcpv6-api
-python3 -m venv /opt/dhcpv6-api/venv && /opt/dhcpv6-api/venv/bin/pip install /opt/dhcpv6-api
+sudo -u avs git clone https://github.com/Jarru01/dhcpv6-api /opt/dhcpv6-api
+sudo -u avs python3 -m venv /opt/dhcpv6-api/venv
+sudo -u avs /opt/dhcpv6-api/venv/bin/pip install /opt/dhcpv6-api
 ```
 
 The service runs as `avs` with the supplementary group `_kea`. That group needs write access
@@ -152,9 +134,10 @@ Problems from building the lab that cost the most time:
   no prefix and no gateway. Check `ip link show ens4` and advertise the real MTU.
 - **IPv6 forwarding turns off RA processing.** With `net.ipv6.conf.all.forwarding = 1`, the
   kernel ignores Router Advertisements on an interface unless its `accept_ra` is `2`.
-- **`Requires=` vs `Wants=`.** With `Requires=kea-dhcp6-server.service`, restarting Kea from
-  inside the API also stopped the API, killing the request that caused the restart. `Wants=`
-  keeps the ordering without tying the two lifecycles together.
+- **`Requires=` vs `Wants=`.** An earlier version restarted Kea through `systemctl` when the
+  control socket failed. With `Requires=kea-dhcp6-server.service`, that restart also stopped
+  the API, killing the request that caused it. `Wants=` keeps the ordering without tying the
+  two lifecycles together. (The API now only uses the control socket and never restarts Kea.)
 - **systemd has no trailing comments.** In `User=avs  # comment`, the comment becomes part of
   the user name. Comments must be on their own line (`systemd-analyze verify` catches this).
 - **Kea 2.2 doesn't support the `ntp-server` option (56).** Using it makes the config fail to
@@ -173,8 +156,9 @@ pytest
 ruff check . && ruff format --check .
 ```
 
-Tests run against a fake Kea control socket and temp copies of the real config. CI also
-validates both Kea configs with `kea-dhcp6 -t` and smoke-tests the Docker demo.
+The API tests use a fake Kea client and temp copies of the real config; the control-socket
+client is tested against a real UNIX socket (Linux only). CI also validates both Kea configs
+with `kea-dhcp6 -t` and smoke-tests the Docker demo.
 
 ## Limitations
 
