@@ -1,0 +1,12 @@
+# Try the API without a lab:  docker compose up --build
+# Then open http://localhost:8000/docs and use "Authorize" with the key below.
+services:
+  dhcpv6-api:
+    build:
+      context: .
+      dockerfile: demo/Dockerfile
+    init: true
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      DHCPV6_API_KEY: demo-key-not-for-production

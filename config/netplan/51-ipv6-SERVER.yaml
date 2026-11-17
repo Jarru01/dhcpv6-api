@@ -1,12 +1,13 @@
-# Subor: /etc/netplan/51-ipv6-SERVER.yaml
-# Ucel: pridanie staticke IPv6 adresy na rozhranie ens4 (privatna siet)
-# Tento subor DOPLNA konfiguraciu z 50-cloud-init.yaml - nic v nom neprepise
-# Cislo 51 zaistuje ze sa nacita az po 50-cloud-init.yaml (vyssia priorita)
-# Po kazdom restate VM Netplan nacita oba subory a ens4 bude mat obe adresy (IPv4 aj IPv6)
+# /etc/netplan/51-ipv6-SERVER.yaml
+# Adds a static IPv6 address to the private interface. Netplan merges this with
+# 50-cloud-init.yaml (files are applied in lexical order), so the IPv4 setup
+# from cloud-init is kept.
 
 network:
   version: 2
   ethernets:
     ens4:
       addresses:
-        - fd00::1/64   # staticka IPv6 adresa servera - funguje ako gateway pre klientov
+        # Server address and default gateway for clients; must be inside the
+        # Kea subnet (fd00::/64)
+        - fd00::1/64

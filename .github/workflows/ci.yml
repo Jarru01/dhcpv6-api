@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest
+
+  kea-config:
+    # Validate the shipped Kea config with the real Kea parser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t dhcpv6-api-demo -f demo/Dockerfile .
+      - name: Lab config (ens4 renamed to the container's eth0)
+        run: >
+          docker run --rm --entrypoint sh -v "$PWD/config:/cfg:ro" dhcpv6-api-demo
+          -c "sed 's/ens4/eth0/g' /cfg/kea-dhcp6.conf > /tmp/kea.conf && kea-dhcp6 -t /tmp/kea.conf"
+      - name: Demo config
+        run: docker run --rm --entrypoint kea-dhcp6 dhcpv6-api-demo -t /etc/kea/kea-dhcp6.conf
+      - name: Demo smoke test
+        run: |
+          docker run -d --name demo -p 8000:8000 -e DHCPV6_API_KEY=ci-key-0123456789abcdef dhcpv6-api-demo
+          for i in $(seq 1 30); do curl -fs localhost:8000/healthz && break; sleep 1; done
+          curl -fs -H "X-API-Key: ci-key-0123456789abcdef" localhost:8000/api/v1/status | tee /dev/stderr | grep -q '"kea_dhcp6":"active"'
+          curl -fs -X POST -H "X-API-Key: ci-key-0123456789abcdef" -H "Content-Type: application/json" \
+            -d '{"pool": "fd00::200 - fd00::2ff"}' localhost:8000/api/v1/subnets/1/pools
+      - if: failure()
+        run: docker logs demo

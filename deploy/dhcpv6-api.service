@@ -1,46 +1,43 @@
-# Subor: /etc/systemd/system/dhcpv6-api.service
-# Ucel: systemd unit subor pre automaticke spustenie REST API pri starte systemu
+# /etc/systemd/system/dhcpv6-api.service
 #
-# Instalacia:
+# Note: systemd only treats lines that START with '#' as comments, so every
+# comment in this file sits on its own line. A trailing "Key=value  # note"
+# silently becomes part of the value.
+#
+# Install:
 #   sudo cp deploy/dhcpv6-api.service /etc/systemd/system/
 #   sudo systemctl daemon-reload
-#   sudo systemctl enable dhcpv6-api
-#   sudo systemctl start dhcpv6-api
-#
-# Uzitocne prikazy:
-#   sudo systemctl status dhcpv6-api          - stav sluzby
-#   sudo journalctl -u dhcpv6-api -f          - sledovanie logov v realnom case
-#   sudo journalctl -u dhcpv6-api -n 50       - poslednych 50 riadkov logu
+#   sudo systemctl enable --now dhcpv6-api
+# Logs:
+#   journalctl -u dhcpv6-api -f
 
 [Unit]
-Description=DHCPv6 REST API (FastAPI/Uvicorn)
-# sluzba sa spusti az po inicializacii siete a Kea servera
-After=network.target kea-dhcp6-server.service
-
-# KRITICKE: pouziva sa Wants= a NIE Requires=
-# Dovod: Requires= by zviazalo zivotne cykly oboch sluzieb.
-# Ked REST API zavola reload Kea (cez systemctl reload-or-restart), systemd by
-# restarting Kea zároveň zastavil aj dhcpv6-api (lebo Requires= vynucuje rovnaky zivotny cyklus).
-# Uvicorn process by bol zabitý uprostred HTTP requestu → kazde POST/PUT/DELETE vrati HTTP 500.
-# Wants= je slaba zavislost: API startuje po Kea, ale ich zivotne cykly su nezavisle.
-Wants=kea-dhcp6-server.service
+Description=DHCPv6 REST API (FastAPI/Uvicorn) for Kea
+After=network-online.target kea-dhcp6-server.service
+# Wants= rather than Requires=: with Requires=, a Kea restart would also stop
+# this service, killing the API in the middle of the request that caused it.
+Wants=network-online.target kea-dhcp6-server.service
 
 [Service]
-Type=simple                # typ sluzby - simple = hlavny proces je priamo uvicorn
-User=avs                   # sluzba bezi pod uzivatelom avs (nie root - z bezpecnostnych dovodov)
-Group=avs                  # skupina
-WorkingDirectory=/opt/dhcpv6-api   # pracovny adresar - nutne pre relativne importy (kea, models)
+Type=simple
+User=avs
+Group=avs
+# _kea group gives access to /etc/kea and the Kea control socket
+SupplementaryGroups=_kea
+WorkingDirectory=/opt/dhcpv6-api
+# Must define DHCPV6_API_KEY (see .env.example); chmod 600, owned by root
+EnvironmentFile=/etc/dhcpv6-api.env
+# The firewall only allows port 8000 from the private interface (ens4).
+ExecStart=/opt/dhcpv6-api/venv/bin/uvicorn --factory dhcpv6_api.main:create_app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
 
-# spustenie uvicorn bez --reload (reload je len pre vyvoj, nie produkciu)
-# --host 0.0.0.0 = pocuva na vsetkych rozhranich (nielen localhost)
-# --port 8000    = port na ktorom bezi REST API
-ExecStart=/opt/dhcpv6-api/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
-
-Restart=on-failure         # automaticky restart ak sluzba padne s chybou (nie pri manualnom stop)
-RestartSec=5               # caka 5 sekund pred pokusom o restart
-StandardOutput=journal     # stdout sa zapisuje do systemd journalu
-StandardError=journal      # stderr sa zapisuje do systemd journalu
+# Hardening: the service only needs to write the Kea config directory.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/etc/kea
 
 [Install]
-# sluzba sa aktivuje v multi-user.target (bezny stav systemu s networkingom, bez GUI)
 WantedBy=multi-user.target

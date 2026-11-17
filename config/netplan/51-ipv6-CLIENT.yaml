@@ -1,16 +1,15 @@
-# Subor: /etc/netplan/51-ipv6-CLIENT.yaml
-# Ucel: povolenie DHCPv6 klienta na rozhranie ens3 + nastavenie DNS serverov
-# Tento subor DOPLNA konfiguraciu z 50-cloud-init.yaml - nic v nom neprepise
-# dhcp6: true - systemd-networkd caka na Router Advertisement od radvd
-#              a potom automaticky poziadá Kea server o IPv6 adresu
-# nameservers - oprava chybajuceho DNS z cloud-init konfiguracie, perzistentne po restate
+# /etc/netplan/51-ipv6-CLIENT.yaml
+# Enables the DHCPv6 client on the client's only interface. systemd-networkd
+# waits for a Router Advertisement from radvd (M flag set) and then requests
+# an address from Kea. Merged with 50-cloud-init.yaml.
 
 network:
   version: 2
   ethernets:
     ens3:
-      dhcp6: true          # zapne DHCPv6 klienta cez systemd-networkd
+      dhcp6: true
       nameservers:
+        # cloud-init leaves no resolvers on this image; set them persistently
         addresses:
-          - 8.8.8.8        # Google DNS IPv4 - primarny
-          - 1.1.1.1        # Cloudflare DNS IPv4 - zaloha
+          - 8.8.8.8
+          - 1.1.1.1
